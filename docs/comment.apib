@@ -1,0 +1,99 @@
+# Group Comments
+Welcome to the comments API. This API provides access to the comments service.
+
+## comments [/comments]
+
+### Create comment [POST]
+
+Create a new comment
+
++ Request comment (application/json; charset=utf-8)
+    + Headers
+
+            Accept: application/vnd.Goryudyuma+json
+    + Attributes
+
+        + writer_id: 1 (number)
+        + writer_name: 1 (number)
+        + : COMMENT (string)
+        + : 1 (number)
+        + parent_comment: PARENTCOMMENT (string)
+
++ Response 201 (application/json; charset=utf-8)
+    + Attributes (comment, fixed)
+
+### Get comments [GET]
+
+Returns a comment list.
+
++ Request (application/json; charset=utf-8)
+    + Headers
+
+            Accept: application/vnd.Goryudyuma+json
+
++ Response 200 (application/json; charset=utf-8)
+    + Attributes (array, fixed)
+        + (comment)
+
+## comment details [/comments/{id}]
+
++ Parameters
+    + id: `1` (enum[string]) - The ID of the desired comment.
+        + Members
+            + `1`
+            + `2`
+            + `3`
+
+### Get comment [GET]
+
+Returns a comment.
+
++ Request (application/json; charset=utf-8)
+    + Headers
+
+            Accept: application/vnd.Goryudyuma+json
+
++ Response 200 (application/json; charset=utf-8)
+    + Attributes (comment, fixed)
+
+### Update comment [PUT]
+
+Update a comment.
+
++ Request comment (application/json; charset=utf-8)
+    + Headers
+
+            Accept: application/vnd.Goryudyuma+json
+    + Attributes
+
+        + writer_id: 1 (number)
+        + writer_name: 1 (number)
+        + : COMMENT (string)
+        + : 1 (number)
+        + parent_comment: PARENTCOMMENT (string)
+
++ Response 200 (application/json; charset=utf-8)
+    + Attributes (comment, fixed)
+
+### Delete comment [DELETE]
+
+Delete a comment.
+
++ Request (application/json; charset=utf-8)
+    + Headers
+
+            Accept: application/vnd.Goryudyuma+json
+
++ Response 204
+
+# Data Structures
+## comment (object)
+
++ id: *1* (number)
++ writer_id: *1* (number)
++ writer_name: *1* (number)
++ : *COMMENT* (string)
++ : *1* (number)
++ parent_comment: *PARENTCOMMENT* (string)
++ created_at: `*2000-01-01 00:00:00*` (string)
++ updated_at: `*2000-01-01 00:00:00*` (string)
