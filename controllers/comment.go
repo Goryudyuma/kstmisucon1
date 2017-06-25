@@ -2,23 +2,16 @@ package controllers
 
 import (
 	"encoding/json"
-	"net/http"
 
 	dbpkg "github.com/Goryudyuma/kstmisucon1/db"
 	"github.com/Goryudyuma/kstmisucon1/helper"
 	"github.com/Goryudyuma/kstmisucon1/models"
-	"github.com/Goryudyuma/kstmisucon1/version"
+	"github.com/Goryudyuma/kstmisucon1/sessions"
 
 	"github.com/gin-gonic/gin"
 )
 
 func GetComments(c *gin.Context) {
-	ver, err := version.New(c)
-	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
 	db := dbpkg.DBInstance(c)
 	parameter, err := dbpkg.NewParameter(c, models.Comment{})
 	if err != nil {
@@ -53,11 +46,6 @@ func GetComments(c *gin.Context) {
 	if err := parameter.SetHeaderLink(c, index); err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
-	}
-
-	if version.Range("1.0.0", "<=", ver) && version.Range(ver, "<", "2.0.0") {
-		// conditional branch by version.
-		// 1.0.0 <= this version < 2.0.0 !!
 	}
 
 	if _, ok := c.GetQuery("stream"); ok {
@@ -98,12 +86,6 @@ func GetComments(c *gin.Context) {
 }
 
 func GetComment(c *gin.Context) {
-	ver, err := version.New(c)
-	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
 	db := dbpkg.DBInstance(c)
 	parameter, err := dbpkg.NewParameter(c, models.Comment{})
 	if err != nil {
@@ -129,11 +111,6 @@ func GetComment(c *gin.Context) {
 		return
 	}
 
-	if version.Range("1.0.0", "<=", ver) && version.Range(ver, "<", "2.0.0") {
-		// conditional branch by version.
-		// 1.0.0 <= this version < 2.0.0 !!
-	}
-
 	if _, ok := c.GetQuery("pretty"); ok {
 		c.IndentedJSON(200, fieldMap)
 	} else {
@@ -142,9 +119,8 @@ func GetComment(c *gin.Context) {
 }
 
 func CreateComment(c *gin.Context) {
-	ver, err := version.New(c)
+	userID, err := sessions.LoginID(c)
 	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -156,26 +132,23 @@ func CreateComment(c *gin.Context) {
 		return
 	}
 
+	comment.WriterID = userID
+	db.Raw("SELECT writer_name FROM users WHERE id = ?", userID).Scan(&comment.WriterName)
+	db.Raw("SELECT comment FROM comments WHERE id = ?", comment.ParentID).Scan(&comment.ParentComment)
+
 	if err := db.Create(&comment).Error; err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
-	}
-
-	if version.Range("1.0.0", "<=", ver) && version.Range(ver, "<", "2.0.0") {
-		// conditional branch by version.
-		// 1.0.0 <= this version < 2.0.0 !!
 	}
 
 	c.JSON(201, comment)
 }
 
 func UpdateComment(c *gin.Context) {
-	ver, err := version.New(c)
+	userID, err := sessions.LoginID(c)
 	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-
 	db := dbpkg.DBInstance(c)
 	id := c.Params.ByName("id")
 	comment := models.Comment{}
@@ -183,6 +156,12 @@ func UpdateComment(c *gin.Context) {
 	if db.First(&comment, id).Error != nil {
 		content := gin.H{"error": "comment with id#" + id + " not found"}
 		c.JSON(404, content)
+		return
+	}
+
+	if comment.WriterID != userID {
+		content := gin.H{"error": "他人のコメントは編集できません"}
+		c.JSON(504, content)
 		return
 	}
 
@@ -196,40 +175,15 @@ func UpdateComment(c *gin.Context) {
 		return
 	}
 
-	if version.Range("1.0.0", "<=", ver) && version.Range(ver, "<", "2.0.0") {
-		// conditional branch by version.
-		// 1.0.0 <= this version < 2.0.0 !!
+	childrenComments := []models.Comment{}
+	db.Raw("SELECT * FROM comments WHERE parent_id = ?", id).Scan(&childrenComments)
+	for _, one := range childrenComments {
+		one.ParentComment = comment.Comment
+		if err := db.Save(&one).Error; err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	c.JSON(200, comment)
-}
-
-func DeleteComment(c *gin.Context) {
-	ver, err := version.New(c)
-	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
-	db := dbpkg.DBInstance(c)
-	id := c.Params.ByName("id")
-	comment := models.Comment{}
-
-	if db.First(&comment, id).Error != nil {
-		content := gin.H{"error": "comment with id#" + id + " not found"}
-		c.JSON(404, content)
-		return
-	}
-
-	if err := db.Delete(&comment).Error; err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
-	if version.Range("1.0.0", "<=", ver) && version.Range(ver, "<", "2.0.0") {
-		// conditional branch by version.
-		// 1.0.0 <= this version < 2.0.0 !!
-	}
-
-	c.Writer.WriteHeader(http.StatusNoContent)
 }

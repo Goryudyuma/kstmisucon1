@@ -2,15 +2,31 @@ package controllers
 
 import (
 	"encoding/json"
-	"net/http"
+	"strconv"
 
 	dbpkg "github.com/Goryudyuma/kstmisucon1/db"
 	"github.com/Goryudyuma/kstmisucon1/helper"
 	"github.com/Goryudyuma/kstmisucon1/models"
+	"github.com/Goryudyuma/kstmisucon1/sessions"
 	"github.com/Goryudyuma/kstmisucon1/version"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/gin-gonic/gin"
 )
+
+func GetUserById(c *gin.Context) {
+	db := dbpkg.DBInstance(c)
+
+	id := c.Params.ByName("id")
+
+	ret := models.User{}
+	db.Raw(`SELECT * FROM users WHERE id = ? limit 1`, id).Scan(&ret)
+
+	ret.Password = "hidden"
+
+	c.JSON(200, ret)
+}
 
 func GetUsers(c *gin.Context) {
 	ver, err := version.New(c)
@@ -97,57 +113,54 @@ func GetUsers(c *gin.Context) {
 	}
 }
 
-func GetUser(c *gin.Context) {
-	ver, err := version.New(c)
-	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
+func makeUser(c *gin.Context, user *models.User) {
 	db := dbpkg.DBInstance(c)
-	parameter, err := dbpkg.NewParameter(c, models.User{})
+
+	if len(user.Password) < 8 {
+		c.JSON(400, gin.H{"error": "パスワードは8文字以上で設定してください"})
+		return
+	}
+
+	if 64 < len(user.Password) {
+		c.JSON(400, gin.H{"error": "パスワードは64文字以下で設定してください"})
+		return
+	}
+
+	password, err := bcrypt.GenerateFromPassword([]byte(user.Password), 0)
 	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
+		c.JSON(400, gin.H{"error": "パスワードに使えない文字が含まれています:" + err.Error()})
+		return
+	}
+	user.Password = string(password)
+
+	if len(user.UserName) < 5 {
+		c.JSON(400, gin.H{"error": "ユーザー名は5文字以上で設定してください"})
 		return
 	}
 
-	db = parameter.SetPreloads(db)
-	user := models.User{}
-	id := c.Params.ByName("id")
-	fields := helper.ParseFields(c.DefaultQuery("fields", "*"))
-	queryFields := helper.QueryFields(models.User{}, fields)
-
-	if err := db.Select(queryFields).First(&user, id).Error; err != nil {
-		content := gin.H{"error": "user with id#" + id + " not found"}
-		c.JSON(404, content)
+	if 16 < len(user.UserName) {
+		c.JSON(400, gin.H{"error": "ユーザー名は16文字以下で設定してください"})
 		return
 	}
 
-	fieldMap, err := helper.FieldToMap(user, fields)
-	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
+	users := []models.User{}
+	db.Raw("SELECT * FROM users WHERE user_name = ?", user.UserName).Scan(&users)
+	if len(users) != 0 {
+		c.JSON(400, gin.H{"error": "すでにそのユーザー名は登録されています"})
 		return
 	}
 
-	if version.Range("1.0.0", "<=", ver) && version.Range(ver, "<", "2.0.0") {
-		// conditional branch by version.
-		// 1.0.0 <= this version < 2.0.0 !!
+	if len(user.ScreenName) < 5 {
+		c.JSON(400, gin.H{"error": "表示名は5文字以上で設定してください"})
+		return
 	}
-
-	if _, ok := c.GetQuery("pretty"); ok {
-		c.IndentedJSON(200, fieldMap)
-	} else {
-		c.JSON(200, fieldMap)
+	if 64 < len(user.ScreenName) {
+		c.JSON(400, gin.H{"error": "表示名は64文字以下で設定してください"})
+		return
 	}
 }
 
 func CreateUser(c *gin.Context) {
-	ver, err := version.New(c)
-	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
 	db := dbpkg.DBInstance(c)
 	user := models.User{}
 
@@ -155,33 +168,29 @@ func CreateUser(c *gin.Context) {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
+
+	makeUser(c, &user)
 
 	if err := db.Create(&user).Error; err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	if version.Range("1.0.0", "<=", ver) && version.Range(ver, "<", "2.0.0") {
-		// conditional branch by version.
-		// 1.0.0 <= this version < 2.0.0 !!
-	}
+	sessions.Login(c)
 
-	c.JSON(201, user)
+	c.JSON(201, nil)
 }
 
 func UpdateUser(c *gin.Context) {
-	ver, err := version.New(c)
+	db := dbpkg.DBInstance(c)
+	id, err := sessions.LoginID(c)
 	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-
-	db := dbpkg.DBInstance(c)
-	id := c.Params.ByName("id")
 	user := models.User{}
 
 	if db.First(&user, id).Error != nil {
-		content := gin.H{"error": "user with id#" + id + " not found"}
+		content := gin.H{"error": "user with id#" + strconv.Itoa(int(id)) + " not found"}
 		c.JSON(404, content)
 		return
 	}
@@ -191,45 +200,14 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 
+	makeUser(c, &user)
+
 	if err := db.Save(&user).Error; err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
 
-	if version.Range("1.0.0", "<=", ver) && version.Range(ver, "<", "2.0.0") {
-		// conditional branch by version.
-		// 1.0.0 <= this version < 2.0.0 !!
-	}
+	db.Exec("UPDATE comments SET writer_name = ? WHERE writer_id = ?", user.ScreenName, id)
 
-	c.JSON(200, user)
-}
-
-func DeleteUser(c *gin.Context) {
-	ver, err := version.New(c)
-	if err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
-	db := dbpkg.DBInstance(c)
-	id := c.Params.ByName("id")
-	user := models.User{}
-
-	if db.First(&user, id).Error != nil {
-		content := gin.H{"error": "user with id#" + id + " not found"}
-		c.JSON(404, content)
-		return
-	}
-
-	if err := db.Delete(&user).Error; err != nil {
-		c.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
-	if version.Range("1.0.0", "<=", ver) && version.Range(ver, "<", "2.0.0") {
-		// conditional branch by version.
-		// 1.0.0 <= this version < 2.0.0 !!
-	}
-
-	c.Writer.WriteHeader(http.StatusNoContent)
+	c.JSON(200, nil)
 }
