@@ -133,8 +133,24 @@ func CreateComment(c *gin.Context) {
 	}
 
 	comment.WriterID = userID
-	db.Raw("SELECT writer_name FROM users WHERE id = ?", userID).Scan(&comment.WriterName)
-	db.Raw("SELECT comment FROM comments WHERE id = ?", comment.ParentID).Scan(&comment.ParentComment)
+	if rows, err := db.Raw("SELECT user_name FROM users WHERE id = ?", userID).Rows(); err == nil {
+		rows.Next()
+		rows.Scan(&comment.WriterName)
+		rows.Close()
+	} else {
+		c.JSON(400, gin.H{"error": err.Error()})
+		rows.Close()
+		return
+	}
+	if rows, err := db.Raw("SELECT comment FROM comments WHERE id = ?", comment.ParentID).Rows(); err == nil {
+		rows.Next()
+		rows.Scan(&comment.ParentComment)
+		rows.Close()
+	} else {
+		c.JSON(400, gin.H{"error": err.Error()})
+		rows.Close()
+		return
+	}
 
 	if err := db.Create(&comment).Error; err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})

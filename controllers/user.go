@@ -113,51 +113,52 @@ func GetUsers(c *gin.Context) {
 	}
 }
 
-func makeUser(c *gin.Context, user *models.User) {
+func makeUser(c *gin.Context, user *models.User) bool {
 	db := dbpkg.DBInstance(c)
 
 	if len(user.Password) < 8 {
 		c.JSON(400, gin.H{"error": "パスワードは8文字以上で設定してください"})
-		return
+		return false
 	}
 
 	if 64 < len(user.Password) {
 		c.JSON(400, gin.H{"error": "パスワードは64文字以下で設定してください"})
-		return
+		return false
 	}
 
 	password, err := bcrypt.GenerateFromPassword([]byte(user.Password), 0)
 	if err != nil {
 		c.JSON(400, gin.H{"error": "パスワードに使えない文字が含まれています:" + err.Error()})
-		return
+		return false
 	}
 	user.Password = string(password)
 
 	if len(user.UserName) < 5 {
 		c.JSON(400, gin.H{"error": "ユーザー名は5文字以上で設定してください"})
-		return
+		return false
 	}
 
 	if 16 < len(user.UserName) {
 		c.JSON(400, gin.H{"error": "ユーザー名は16文字以下で設定してください"})
-		return
+		return false
 	}
 
 	users := []models.User{}
 	db.Raw("SELECT * FROM users WHERE user_name = ?", user.UserName).Scan(&users)
 	if len(users) != 0 {
 		c.JSON(400, gin.H{"error": "すでにそのユーザー名は登録されています"})
-		return
+		return false
 	}
 
-	if len(user.ScreenName) < 5 {
-		c.JSON(400, gin.H{"error": "表示名は5文字以上で設定してください"})
-		return
+	if len(user.ScreenName) < 1 {
+		c.JSON(400, gin.H{"error": "表示名は1文字以上で設定してください"})
+		return false
 	}
 	if 64 < len(user.ScreenName) {
 		c.JSON(400, gin.H{"error": "表示名は64文字以下で設定してください"})
-		return
+		return false
 	}
+	return true
 }
 
 func CreateUser(c *gin.Context) {
@@ -169,14 +170,15 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 
-	makeUser(c, &user)
+	ok := makeUser(c, &user)
+	if !ok {
+		return
+	}
 
 	if err := db.Create(&user).Error; err != nil {
 		c.JSON(400, gin.H{"error": err.Error()})
 		return
 	}
-
-	sessions.Login(c)
 
 	c.JSON(201, nil)
 }
